@@ -15,7 +15,7 @@
 	</properties>
 
 	<dependencies>
-	<!-- apache log4j2 dependencies -->
+		<!-- apache log4j2 dependencies -->
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-api</artifactId>
@@ -26,6 +26,7 @@
 			<artifactId>log4j-core</artifactId>
 			<version>2.3</version>
 		</dependency>
+
 
 		<!-- apache commons v3.4 -->
 		<dependency>
@@ -50,7 +51,7 @@
 			<version>3.8.1</version>
 			<scope>test</scope>
 		</dependency>
-		
+
 		<!-- twitter4j v4.0.4 -->
 		<dependency>
 			<groupId>org.twitter4j</groupId>
