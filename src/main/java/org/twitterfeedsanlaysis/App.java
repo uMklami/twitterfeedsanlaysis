@@ -19,7 +19,7 @@ public class App
 //		}
     	
 		log.info("Initializing ontologies!");
-		(new TermOntologyMatcher("tweets.txt", "ontology.json")).matchTerms();
+		(new TermOntologyMatcher("mytweets.txt", "myontology.json")).matchTerms();
 		log.info("Done!");
     }
 }
