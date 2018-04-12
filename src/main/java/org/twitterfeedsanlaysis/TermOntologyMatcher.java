@@ -1,192 +1,191 @@
 package org.twitterfeedsanlaysis;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.twitterfeedsanlaysis.DataLoader;
-import org.twitterfeedsanlaysis.Term;
+
 
 public class TermOntologyMatcher {
+    private static Logger log = LogManager.getRootLogger();
 
-	private static Logger log = LogManager.getRootLogger();
+    private String tweetsPath;
+    private String ontologiesPath;
+    private Set<String> conceptTweetTags = new HashSet<String>();
+    private Map<String, int[]> tags = new HashMap<String, int[]>();
 
-	private String tweetsPath;
-	private String ontologiesPath;
-	private List<MatchedTerm> matches;
-	public List<String> not_matched;
+    public String getTweetsPath() {
+        return tweetsPath;
+    }
 
-	public TermOntologyMatcher() {
-	}
+    public void setTweetsPath(String tweetsPath) {
+        this.tweetsPath = tweetsPath;
+    }
 
-	public TermOntologyMatcher(String tweetsPath, String ontologiesPath) {
-		this.tweetsPath = tweetsPath;
-		this.ontologiesPath = ontologiesPath;
-		not_matched = new ArrayList<String>();
-	}
+    public Set<String> getConceptTweetTags() {
+        return conceptTweetTags;
+    }
 
-	public List<MatchedTerm> matchTerms() {
-		int matchedCount = 0;
-		List<String> tweetTags = DataLoader.fetchTags(tweetsPath);
-		List<Map<String, String>> ontologies = DataLoader
-				.fetchOntologies(ontologiesPath);
-		matches = new ArrayList<MatchedTerm>();
-		for (String tag : tweetTags) {
-			int rootCounter = 0;
-			for (Map<String, String> ontology : ontologies) {
-				String ontoTagsString = ontology.get("Tag").toLowerCase();
-				String[] ontoTags = ontoTagsString.replaceAll(" ", "").split(
-						",");
-				for (String ontoTag : ontoTags) {
-					if (ontoTag.equals(tag)) {
-						rootCounter++;
-						addToRelation(tag, ontology);
-					}
-				}
-			}
-			log.debug(tag + ", matched " + rootCounter + " times");
+    public void setConceptTweetTags(Set<String> concepttweetTags) {
+        conceptTweetTags = concepttweetTags;
+    }
 
-			for (int i = 0; i < matches.size(); i++) {
-				for (int j = 0; j < matches.get(i).getChilds().size(); j++) {
-					if (matches.get(i).getChilds().get(j).getTerm().equals(tag)) {
-						matches.get(i).getChilds().get(j)
-								.setOverAllFrequency(rootCounter);
-					}
-				}
-			}
-			if (rootCounter == 0) {
-				not_matched.add(tag);
-			} else {
-				matchedCount++;
+    public String getOntologiesPath() {
+        return ontologiesPath;
+    }
+
+    public void setOntologiesPath(String ontologiesPath) {
+        this.ontologiesPath = ontologiesPath;
+    }
+
+    public Map<String, int[]> getTags() {
+        return tags;
+    }
+
+    public void setTags(Map<String, int[]> tags) {
+        this.tags = tags;
+    }
+
+    public TermOntologyMatcher() {
+    }
+
+    public TermOntologyMatcher(String tweetsFilePath, String ontologiesFilePath) {
+        this.tweetsPath = tweetsFilePath;
+        this.ontologiesPath = ontologiesFilePath;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String,Object> getOntology() {
+        Map<String, Object> resultTerms = matchTerms(tweetsPath, ontologiesPath);
+        List<Term> matchedTerms = (List<Term>) resultTerms.get("matched");
+        List<String> unMatchedTerms = (List<String>) resultTerms.get("unMatched");
+        /***
+         * Preparing Map<String, int[]> from List<Term> to be visualize.
+         * **/
+       this.setTags(visualizeMap(matchedTerms));
+
+        return printMatchedTerms(matchedTerms, unMatchedTerms);
+    }
+
+    public Map<String, Object> matchTerms(String tweeetsfile, String ontologiesfile) {
+
+        List<Term> matched = new ArrayList<Term>();
+        List<String> unMatched = new ArrayList<String>();
+        Map<String, Object> matchTermResult = new HashMap<String, Object>(); 
+        List<String> tweetTags = DataLoader.fetchTags(tweeetsfile);
+        List<Map<String, String>> ontologies = DataLoader.fetchOntologies(ontologiesfile);
+
+        for (String tag : tweetTags) {
+            int rootCounter = 0;
+            for (Map<String, String> ontology : ontologies) {
+                String ontoTagsString = ontology.get("Tag").toLowerCase();
+                String[] ontoTags = ontoTagsString.replaceAll(" ", "").split(",");
+                for (String ontoTag : ontoTags) {
+                    if (ontoTag.equals(tag)) {
+                        rootCounter++;
+                        addToRelation(tag, ontology, matched);
+                        conceptTweetTags.add(tag);
+                    }
+                }
+            }
+            log.debug(tag + ", matched " + rootCounter + " times");
+            for (Term term : matched) {
+                int childIndex = -1;
+                if ((childIndex = getMatchedChildIndex(term.getChilds(), tag)) != -1) {
+                    term.getChilds().get(childIndex).setOverAllFrequency(rootCounter);
+                }
+            }
+            if (rootCounter == 0) {
+                unMatched.add(tag);
+            }
+        }
+        matchTermResult.put("matched", finalHierarchy(matched));
+        matchTermResult.put("unMatched", unMatched);
+
+        return matchTermResult;
+    }
+
+    public int getMatchedChildIndex(List<Term> childs, String tag) {
+        for (int j = 0; j < childs.size(); j++) {
+            if (childs.get(j).getTerm().equals(tag)) {
+                return j;
+            }
+        }
+        return -1;
+    }
+
+    public List<Term> addToRelation(String term, Map<String, String> ontology, List<Term> matchedTerms) {
+        for (int i = 0; i < matchedTerms.size(); i++) {
+            if (matchedTerms.get(i).getTerm().equals(ontology.get("Parent").trim())) {
+                matchedTerms.get(i).addChild(new Term(term, ontology.get("Title"), ontology.get("Body")
+                				   .replaceAll("[\r\n]+", ""), ontology.get("Tag")));
+                return matchedTerms;
+            }
+        }
+        Term relation = new Term(ontology.get("Parent").trim());
+        relation.addChild(new Term(term, ontology.get("Title"), ontology.get("Body")
+        		.replaceAll("[\r\n]+", ""), ontology.get("Tag")));
+        matchedTerms.add(relation);
+
+        return matchedTerms;
+    }
+
+    public List<Term> finalHierarchy(List<Term> matchedTerms) {
+    	for (int i = 0; i < matchedTerms.size(); i++) {
+            Term relation = matchedTerms.get(i);
+            String parent = relation.getTerm().toLowerCase();
+            for (int k = 0; k < matchedTerms.size(); k++) {
+                if (k != i) {
+                    Term nextRelation = matchedTerms.get(k);
+                    for (int j = 0; j < nextRelation.getChilds().size(); j++) {
+                        if (parent.equals(nextRelation.getChilds().get(j).getTerm().toLowerCase())) {
+                            nextRelation.getChilds().get(j).addChilds(relation.getChilds());
+                            matchedTerms.remove(relation);
+                        }
+                    }
+                }
+            }
+        }
+        return matchedTerms;
+    }
+
+    public Map<String,Object> printMatchedTerms(List<Term> matchTerms, List<String> unMatchTerms) {
+        int matchedCount = matchTerms.size();
+        int unMatchedCount = unMatchTerms.size();
+        log.info("matched [" + matchedCount + "]");
+        Map<String, Object> map = new HashMap<String, Object>();
+        map.put("matched", matchTerms);
+        map.put("unmatched", unMatchTerms);
+        log.info(percentage(matchedCount, unMatchedCount) + "% tags matched");
+        return map;
+    }
+    
+    public String percentage(int matched, int unMatched){
+        float total = matched + unMatched;
+        float percentage = 0.0F;
+        if (total != 0) {
+            percentage = ((matched * 100.0F) / total);
+        }
+         return String.format("%.2f",percentage);
+    }
+    
+    // for creating map to be visualise
+	public Map<String, int[]> visualizeMap(List<Term> terms) {
+		Map<String, int[]> tags = new HashMap<String, int[]>();
+		for (Term term : terms) {
+			for (Term child : term.getChilds()) {
+				int[] freqs = new int[2];
+				String name = child.getTerm();
+				freqs[0] = child.getOverAllFrequency();
+				freqs[1] = child.getFrequency();
+				tags.put(name, freqs);
 			}
 		}
-		printTestMatched(matchedCount);
-		return null;
-	}
-
-	public String getTweetsPath() {
-		return tweetsPath;
-	}
-
-	public void setTweetsPath(String tweetsPath) {
-		this.tweetsPath = tweetsPath;
-	}
-
-	public String getOntologiesPath() {
-		return ontologiesPath;
-	}
-
-	public void setOntologiesPath(String ontologiesPath) {
-		this.ontologiesPath = ontologiesPath;
-	}
-
-	public List<MatchedTerm> getMatches() {
-		return matches;
-	}
-
-	public void setMatches(List<MatchedTerm> matches) {
-		this.matches = matches;
-	}
-
-	public void addToRelation(String term, Map<String, String> ontology) {
-		for (int i = 0; i < matches.size(); i++) {
-			if (matches.get(i).getParent().getTerm()
-					.equals(ontology.get("Parent").trim())) {
-				matches.get(i).addChild(
-						new Term(term, ontology.get("Title"), ontology.get(
-								"Body").replaceAll("[\r\n]+", ""), ontology
-								.get("Tag")));
-				return;
-			}
-		}
-		MatchedTerm relation = new MatchedTerm(new Term(ontology.get("Parent")
-				.trim()));
-		relation.addChild(new Term(term, ontology.get("Title"), ontology.get(
-				"Body").replaceAll("[\r\n]+", ""), ontology.get("Tag")));
-		matches.add(relation);
-	}
-	
-//	public void makeHierarchy(){
-//		for (int i = 0; i < matches.size(); i++) {
-//			MatchedTerm relation = matches.get(i);
-//			for (int j=0; j< (matches.size()); j++){
-//				MatchedTerm relation2 = matches.get(j);
-//				
-//			}
-//			
-//		}
-//		
-//	}
-
-	public void printTestMatched(int matchedCount) {
-		String results = "results.txt";
-		log.info("matched [" + matchedCount + "]");
-		FileWriter fw = null;
-		StringBuilder sb = new StringBuilder();
-		try {
-			fw = new FileWriter(new File(results));
-			sb.append("{\"matched\":[");
-			for (int i = 0; i < matches.size(); i++) {
-				MatchedTerm relation = matches.get(i);
-				sb.append("{\"parent\":\"" + relation.getParent().getTerm()
-						+ "\"");
-				sb.append(",\"childs\":[");
-				int numChilds = relation.getChilds().size();
-				for (int j = 0; j < numChilds; j++) {
-					Term child = relation.getChilds().get(j);
-					sb.append("{");
-					sb.append("\"term\":\"" + child.getTerm() + "\",");
-					sb.append("\"title\":\"" + child.getTitle() + "\",");
-					sb.append("\"description\":\"...\",");
-					sb.append("\"tags\":\"" + child.getTags() + "\",");
-					sb.append("\"frequency\":\"" + child.getFrequency() + "\",");
-					sb.append("\"overAllFrequency\":\""
-							+ child.getOverAllFrequency() + "\"");
-					sb.append("}");
-					if (j < (numChilds - 1)) {
-						sb.append(",");
-					}
-				}
-				sb.append("]}");
-				if (i < (matches.size() - 1)) {
-					sb.append(",");
-				}
-			}
-			sb.append("],\"not_matched\":[");
-			int unmatchedCount = not_matched.size();
-			for (int i = 0; i < unmatchedCount; i++) {
-				String comma = ",";
-				if (i == unmatchedCount - 1) {
-					comma = "";
-				}
-				sb.append("\"" + not_matched.get(i) + "\"" + comma);
-			}
-			sb.append("]}");
-			fw.write(sb.toString());
-			fw.close();
-
-			float total = matchedCount + unmatchedCount;
-			float percentage = 0.0F;
-			if (total != 0) {
-				percentage = ((matchedCount * 100.0F) / total);
-				log.info(String.format("%.2f", percentage) + "% tags matched");
-			}
-			log.info("Results are stored in [" + results + "]");
-		} catch (IOException ex) {
-			ex.printStackTrace();
-		} finally {
-			try {
-				if (fw != null) {
-					fw.close();
-				}
-			} catch (IOException ex) {
-				ex.printStackTrace();
-			}
-		}
+		return tags;
 	}
 }
